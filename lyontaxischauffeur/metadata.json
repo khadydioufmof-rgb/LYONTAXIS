@@ -1,0 +1,6 @@
+{
+  "name": "Aber Chauffeur",
+  "description": "Plateforme complète pour chauffeurs VTC : navigation GPS en direct, gestion des courses, suivi des revenus en temps réel, messagerie passagers et profil véhicule.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

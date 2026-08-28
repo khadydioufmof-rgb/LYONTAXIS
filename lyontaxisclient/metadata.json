@@ -1,0 +1,6 @@
+{
+  "name": "LyonTaxis",
+  "description": "Application officielle de réservation et de suivi de taxis à Lyon (Place Bellecour, Part-Dieu, Aéroport Lyon-Saint Exupéry).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3pkdN7d7e8H0nY8W8+1m8k1b8mJc=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; background: #eef2f5; }
+    .leaflet-control-attribution { font-size: 10px; }
+    .pin { width: 18px; height: 18px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid #fff; box-shadow: 0 2px 8px #26323866; }
+    .pin span { display: block; width: 6px; height: 6px; margin: 3px; border-radius: 50%; background: #fff; }
+    .pickup { background: #178b78; }
+    .dropoff { background: #e45454; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const lyon = [45.7578, 4.8320];
+  const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView(lyon, 13);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  let markers = [];
+  let route = null;
+  let routeRequest = 0;
+
+  map.on('click', event => {
+    if (window.AndroidMap) window.AndroidMap.onMapTap(event.latlng.lat, event.latlng.lng);
+  });
+
+  function markerIcon(type) {
+    return L.divIcon({ className: '', html: `<div class="pin ${type}"><span></span></div>`, iconSize: [24, 24], iconAnchor: [12, 24] });
+  }
+
+  window.renderRide = function(pickup, dropoff, interactive) {
+    map.dragging[interactive ? 'enable' : 'disable']();
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    if (route) { map.removeLayer(route); route = null; }
+    const points = [];
+    if (pickup) { markers.push(L.marker([pickup.lat, pickup.lng], { icon: markerIcon('pickup') }).addTo(map).bindPopup(pickup.title)); points.push([pickup.lat, pickup.lng]); }
+    if (dropoff) { markers.push(L.marker([dropoff.lat, dropoff.lng], { icon: markerIcon('dropoff') }).addTo(map).bindPopup(dropoff.title)); points.push([dropoff.lat, dropoff.lng]); }
+    if (points.length === 2) {
+      const requestId = ++routeRequest;
+      fetch(`https://router.project-osrm.org/route/v1/driving/${points[0][1]},${points[0][0]};${points[1][1]},${points[1][0]}?overview=full&geometries=geojson`)
+        .then(response => response.json())
+        .then(data => {
+          if (requestId !== routeRequest || !data.routes || !data.routes[0]) return;
+          route = L.geoJSON(data.routes[0].geometry, { style: { color: '#178b78', weight: 6, opacity: .82 } }).addTo(map);
+          map.fitBounds(route.getBounds(), { padding: [36, 36] });
+        }).catch(() => map.fitBounds(points, { padding: [48, 48] }));
+    } else if (points.length) {
+      map.setView(points[0], 16);
+    }
+  };
+</script>
+</body>
+</html>
