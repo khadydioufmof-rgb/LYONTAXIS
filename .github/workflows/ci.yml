@@ -68,6 +68,15 @@ jobs:
           SESSION_DRIVER: array
         run: php artisan migrate --force
 
+      - name: Lint PHP files
+        shell: bash
+        run: find app database routes bootstrap config -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Validate routes and views
+        run: |
+          php artisan route:list --path=api
+          php artisan view:cache
+
       - name: Run Laravel tests
         env:
           DB_CONNECTION: pgsql
@@ -128,7 +137,7 @@ jobs:
           LYONTAXIS_API_URL: https://api.example.invalid/api/v1
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace -PLYONTAXIS_API_URL="$LYONTAXIS_API_URL"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -158,7 +167,7 @@ jobs:
           LYONTAXIS_API_URL: https://api.example.invalid/api/v1
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace -PLYONTAXIS_API_URL="$LYONTAXIS_API_URL"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
