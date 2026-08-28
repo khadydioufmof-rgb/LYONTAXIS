@@ -23,11 +23,6 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('v1')->group(function () {
-    Route::prefix('admin/auth')->group(function () {
-        Route::post('request-otp', [AuthController::class, 'requestOtp']);
-        Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
-    });
-
     Route::prefix('admin')->middleware(['auth:sanctum', 'platform.role:admin'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/user', [AuthController::class, 'user']);
@@ -53,10 +48,13 @@ Route::prefix('v1')->group(function () {
 
     foreach ($platforms as $platform) {
         Route::prefix($platform)->group(function () use ($platform) {
-            Route::prefix('auth')->group(function () {
-                Route::post('login', [AuthController::class, 'loginWithPassword']);
-                Route::post('request-otp', [AuthController::class, 'requestOtp']);
-                Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
+            Route::prefix('auth')->group(function () use ($platform) {
+                if ($platform === 'driver') {
+                    Route::post('login', [AuthController::class, 'loginWithPassword'])->middleware('throttle:5,1');
+                } else {
+                    Route::post('request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:10,1');
+                    Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
+                }
                 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
                 Route::get('user', [AuthController::class, 'user'])->middleware('auth:sanctum');
             });

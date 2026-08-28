@@ -8,6 +8,7 @@ use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuthController
@@ -32,7 +33,7 @@ class AuthController
 
         return response()->json([
             'success' => true,
-            'token' => $user->createToken('driver_api_token')->plainTextToken,
+            'token' => $user->createToken('driver_api_token', ['*'], now()->addDays(30))->plainTextToken,
             'user' => [
                 'id' => (string) $user->id,
                 'email' => $user->email,
@@ -60,8 +61,9 @@ class AuthController
             // Store in cache for 10 minutes
             cache(['otp_' . $identifier => $otpCode], now()->addMinutes(10));
             
-            // Log for testing
-            \Log::info("OTP for {$identifier}: {$otpCode}");
+            if (app()->environment(['local', 'testing'])) {
+                Log::info("OTP for {$identifier}: {$otpCode}");
+            }
 
             return response()->json([
                 'success' => true,
@@ -95,6 +97,13 @@ class AuthController
                 'success' => false,
                 'message' => 'Plateforme inconnue',
             ], 404);
+        }
+
+        if ($platform === 'admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisez la connexion administrateur par mot de passe',
+            ], 403);
         }
 
         // Verify OTP from cache
@@ -146,7 +155,7 @@ class AuthController
             }
 
             // Create token
-            $token = $user->createToken('api_token')->plainTextToken;
+            $token = $user->createToken('api_token', ['*'], now()->addDays(30))->plainTextToken;
 
             // Clear OTP cache
             cache()->forget('otp_' . $identifier);
