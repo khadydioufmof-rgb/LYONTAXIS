@@ -1,6 +1,7 @@
 package com.example.data.supabase
 
 import com.example.BuildConfig
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -33,9 +34,9 @@ data class SupabaseProfileDto(
 
 @JsonClass(generateAdapter = true)
 data class SupabaseLocationDto(
-  val id: String,
-  val title: String,
-  val address: String,
+  val id: String = "",
+  val title: String = "",
+  val address: String = "",
   val distance_km: Double = 0.0,
   val latitude: Double,
   val longitude: Double
@@ -43,37 +44,29 @@ data class SupabaseLocationDto(
 
 @JsonClass(generateAdapter = true)
 data class SupabaseRideInsert(
-  val user_id: String,
-  val pickup_location: SupabaseLocationDto,
-  val dropoff_location: SupabaseLocationDto,
-  val vehicle: String,
-  val status: String,
-  val fare: Double,
-  val base_fare: Double,
-  val distance_fare: Double,
-  val time_fare: Double,
-  val stop_fee: Double,
-  val service_fee: Double,
-  val discount: Double,
-  val tip: Double,
-  val distance_km: Double,
-  val duration_min: Int,
-  val payment_method_title: String,
-  val preferences: Map<String, Boolean>
+  val vehicle_category: String,
+  val pickup_latitude: Double,
+  val pickup_longitude: Double,
+  val dropoff_latitude: Double,
+  val dropoff_longitude: Double,
+  val pickup_address: String,
+  val dropoff_address: String,
+  val passenger_count: Int,
+  val special_requests: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class SupabaseRideDto(
-  val id: String,
+  val id: Long,
   val pickup_location: SupabaseLocationDto,
   val dropoff_location: SupabaseLocationDto,
-  val vehicle: String,
+  @Json(name = "vehicle_category") val vehicle: String,
   val status: String,
   val fare: Double,
   val distance_km: Double = 0.0,
   val duration_min: Int = 0,
   val driver: SupabaseDriverDto? = null,
-  val payment_method_title: String = "Espèces LyonTaxis",
+  @Json(name = "payment_method") val payment_method_title: String = "cash",
   val created_at: String = ""
 )
 
@@ -84,7 +77,7 @@ data class SupabaseDriverDto(
 
 @JsonClass(generateAdapter = true)
 data class SupabaseNotificationDto(
-  val id: String,
+  val id: Long,
   val type: String,
   val title: String,
   val description: String,
@@ -93,68 +86,57 @@ data class SupabaseNotificationDto(
 )
 
 interface SupabaseDataApi {
-  @GET("rest/v1/profiles")
+  @GET("user/profile")
   suspend fun getProfile(
-    @Header("apikey") apiKey: String,
     @Header("Authorization") authorization: String,
-    @Query("id") idFilter: String,
-    @Query("select") select: String = "*"
-  ): Response<List<SupabaseProfileDto>>
+  ): Response<ProfileResponse>
 
-  @Headers("Prefer: return=minimal")
-  @PATCH("rest/v1/profiles")
+  @PATCH("user/profile")
   suspend fun updateProfile(
-    @Header("apikey") apiKey: String,
     @Header("Authorization") authorization: String,
-    @Query("id") idFilter: String,
     @Body profile: SupabaseProfileDto
   ): Response<Unit>
 
-  @Headers("Prefer: return=minimal")
-  @POST("rest/v1/rides")
+  @POST("trips")
   suspend fun createRide(
-    @Header("apikey") apiKey: String,
     @Header("Authorization") authorization: String,
     @Body ride: SupabaseRideInsert
   ): Response<Unit>
 
-  @GET("rest/v1/rides")
+  @GET("trips")
   suspend fun getRides(
-    @Header("apikey") apiKey: String,
     @Header("Authorization") authorization: String,
-    @Query("user_id") userFilter: String,
-    @Query("select") select: String = "*",
-    @Query("order") order: String = "created_at.desc"
-  ): Response<List<SupabaseRideDto>>
+  ): Response<TripListResponse>
 
-  @GET("rest/v1/notifications")
+  @GET("user/notifications")
   suspend fun getNotifications(
-    @Header("apikey") apiKey: String,
-    @Header("Authorization") authorization: String,
-    @Query("user_id") userFilter: String,
-    @Query("select") select: String = "*",
-    @Query("order") order: String = "created_at.desc"
-  ): Response<List<SupabaseNotificationDto>>
+    @Header("Authorization") authorization: String
+  ): Response<NotificationListResponse>
 }
+
+@JsonClass(generateAdapter = true)
+data class ProfileResponse(val user: SupabaseProfileDto)
+
+@JsonClass(generateAdapter = true)
+data class TripListResponse(val trips: List<SupabaseRideDto> = emptyList())
+
+@JsonClass(generateAdapter = true)
+data class NotificationListResponse(val notifications: List<SupabaseNotificationDto> = emptyList())
 
 class SupabaseDataClient(
   private val api: SupabaseDataApi = createApi()
 ) {
   suspend fun getProfile(accessToken: String, userId: String): Result<SupabaseProfileDto?> = runCatching {
     val response = api.getProfile(
-      apiKey = BuildConfig.SUPABASE_ANON_KEY,
-      authorization = "Bearer $accessToken",
-      idFilter = "eq.$userId"
+      authorization = "Bearer $accessToken"
     )
-    check(response.isSuccessful) { "Supabase profile read failed (${response.code()})" }
-    response.body()?.firstOrNull()
+    check(response.isSuccessful) { "LyonTaxis profile read failed (${response.code()})" }
+    response.body()?.user
   }
 
   suspend fun updateProfile(accessToken: String, profile: SupabaseProfileDto): Result<Unit> = runCatching {
     val response = api.updateProfile(
-      apiKey = BuildConfig.SUPABASE_ANON_KEY,
       authorization = "Bearer $accessToken",
-      idFilter = "eq.${profile.id}",
       profile = profile
     )
     check(response.isSuccessful) { "Supabase profile update failed (${response.code()})" }
@@ -162,36 +144,31 @@ class SupabaseDataClient(
 
   suspend fun createRide(accessToken: String, ride: SupabaseRideInsert): Result<Unit> = runCatching {
     val response = api.createRide(
-      apiKey = BuildConfig.SUPABASE_ANON_KEY,
       authorization = "Bearer $accessToken",
       ride = ride
     )
-    check(response.isSuccessful) { "Supabase ride creation failed (${response.code()})" }
+    check(response.isSuccessful) { "LyonTaxis ride creation failed (${response.code()})" }
   }
 
   suspend fun getRides(accessToken: String, userId: String): Result<List<SupabaseRideDto>> = runCatching {
     val response = api.getRides(
-      apiKey = BuildConfig.SUPABASE_ANON_KEY,
-      authorization = "Bearer $accessToken",
-      userFilter = "eq.$userId"
+      authorization = "Bearer $accessToken"
     )
-    check(response.isSuccessful) { "Supabase rides read failed (${response.code()})" }
-    response.body().orEmpty()
+    check(response.isSuccessful) { "LyonTaxis rides read failed (${response.code()})" }
+    response.body()?.trips.orEmpty()
   }
 
   suspend fun getNotifications(accessToken: String, userId: String): Result<List<SupabaseNotificationDto>> = runCatching {
     val response = api.getNotifications(
-      apiKey = BuildConfig.SUPABASE_ANON_KEY,
-      authorization = "Bearer $accessToken",
-      userFilter = "eq.$userId"
+      authorization = "Bearer $accessToken"
     )
-    check(response.isSuccessful) { "Supabase notifications read failed (${response.code()})" }
-    response.body().orEmpty()
+    check(response.isSuccessful) { "LyonTaxis notifications read failed (${response.code()})" }
+    response.body()?.notifications.orEmpty()
   }
 
   companion object {
     private fun createApi(): SupabaseDataApi {
-      val configuredUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
+      val configuredUrl = BuildConfig.LYONTAXIS_API_URL.trimEnd('/')
       val baseUrl = (configuredUrl.ifBlank { "https://invalid.supabase.local" }) + "/"
       return Retrofit.Builder()
         .baseUrl(baseUrl)

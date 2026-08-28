@@ -11,18 +11,12 @@ import retrofit2.http.POST
 import retrofit2.http.Query
 
 @JsonClass(generateAdapter = true)
-data class SupabaseOtpRequest(
-  val email: String? = null,
-  val phone: String? = null,
-  val create_user: Boolean = true
-)
+data class SupabaseOtpRequest(val phone_or_email: String)
 
 @JsonClass(generateAdapter = true)
 data class SupabaseVerifyOtpRequest(
-  val email: String? = null,
-  val phone: String? = null,
-  val token: String,
-  val type: String
+  val phone_or_email: String,
+  val code: String
 )
 
 @JsonClass(generateAdapter = true)
@@ -32,12 +26,15 @@ data class SupabaseRefreshTokenRequest(
 
 @JsonClass(generateAdapter = true)
 data class SupabaseSessionResponse(
-  val access_token: String,
-  val refresh_token: String,
-  val expires_in: Long,
-  val token_type: String,
+  val access_token: String = "",
+  val refresh_token: String = "",
+  val expires_in: Long = 2_592_000,
+  val token_type: String = "Bearer",
+  val token: String? = null,
   val user: SupabaseUserResponse?
-)
+) {
+  fun normalized(): SupabaseSessionResponse = copy(access_token = token ?: access_token)
+}
 
 @JsonClass(generateAdapter = true)
 data class SupabaseUserResponse(
@@ -47,27 +44,14 @@ data class SupabaseUserResponse(
 )
 
 interface SupabaseAuthApi {
-  @POST("auth/v1/otp")
+  @POST("auth/request-otp")
   suspend fun requestOtp(
-    @Header("apikey") apiKey: String,
-    @Header("Authorization") authorization: String,
     @Body request: SupabaseOtpRequest
   ): Response<Unit>
 
-  @POST("auth/v1/token")
+  @POST("auth/verify-otp")
   suspend fun verifyOtp(
-    @Query("grant_type") grantType: String,
-    @Header("apikey") apiKey: String,
-    @Header("Authorization") authorization: String,
     @Body request: SupabaseVerifyOtpRequest
-  ): Response<SupabaseSessionResponse>
-
-  @POST("auth/v1/token")
-  suspend fun refreshSession(
-    @Query("grant_type") grantType: String,
-    @Header("apikey") apiKey: String,
-    @Header("Authorization") authorization: String,
-    @Body request: SupabaseRefreshTokenRequest
   ): Response<SupabaseSessionResponse>
 }
 
@@ -75,63 +59,36 @@ class SupabaseAuthClient(
   private val api: SupabaseAuthApi = createApi()
 ) {
   val isConfigured: Boolean
-    get() = BuildConfig.SUPABASE_URL.isNotBlank() && BuildConfig.SUPABASE_ANON_KEY.isNotBlank()
+    get() = BuildConfig.LYONTAXIS_API_URL.isNotBlank()
 
   suspend fun requestOtp(identifier: String): Result<Unit> {
-    if (!isConfigured) return Result.failure(IllegalStateException("Supabase is not configured"))
+    if (!isConfigured) return Result.failure(IllegalStateException("L'API LyonTaxis n'est pas configuree"))
     val normalized = identifier.trim()
-    val request = if (normalized.contains("@")) {
-      SupabaseOtpRequest(email = normalized)
-    } else {
-      SupabaseOtpRequest(phone = normalized)
-    }
+    val request = SupabaseOtpRequest(phone_or_email = normalized)
     return runCatching {
-      val response = api.requestOtp(
-        apiKey = BuildConfig.SUPABASE_ANON_KEY,
-        authorization = "Bearer ${BuildConfig.SUPABASE_ANON_KEY}",
-        request = request
-      )
-      check(response.isSuccessful) { "Supabase OTP request failed (${response.code()})" }
+      val response = api.requestOtp(request)
+      check(response.isSuccessful) { "LyonTaxis OTP request failed (${response.code()})" }
     }
   }
 
   suspend fun verifyOtp(identifier: String, code: String): Result<SupabaseSessionResponse> {
-    if (!isConfigured) return Result.failure(IllegalStateException("Supabase is not configured"))
+    if (!isConfigured) return Result.failure(IllegalStateException("L'API LyonTaxis n'est pas configuree"))
     val normalized = identifier.trim()
-    val request = if (normalized.contains("@")) {
-      SupabaseVerifyOtpRequest(email = normalized, token = code, type = "email")
-    } else {
-      SupabaseVerifyOtpRequest(phone = normalized, token = code, type = "sms")
-    }
+    val request = SupabaseVerifyOtpRequest(phone_or_email = normalized, code = code)
     return runCatching {
-      val response = api.verifyOtp(
-        grantType = "otp",
-        apiKey = BuildConfig.SUPABASE_ANON_KEY,
-        authorization = "Bearer ${BuildConfig.SUPABASE_ANON_KEY}",
-        request = request
-      )
-      check(response.isSuccessful) { "Supabase OTP verification failed (${response.code()})" }
-      requireNotNull(response.body()) { "Supabase returned an empty session" }
+      val response = api.verifyOtp(request)
+      check(response.isSuccessful) { "LyonTaxis OTP verification failed (${response.code()})" }
+      requireNotNull(response.body()) { "LyonTaxis returned an empty session" }.normalized()
     }
   }
 
   suspend fun refreshSession(refreshToken: String): Result<SupabaseSessionResponse> {
-    if (!isConfigured) return Result.failure(IllegalStateException("Supabase is not configured"))
-    return runCatching {
-      val response = api.refreshSession(
-        grantType = "refresh_token",
-        apiKey = BuildConfig.SUPABASE_ANON_KEY,
-        authorization = "Bearer ${BuildConfig.SUPABASE_ANON_KEY}",
-        request = SupabaseRefreshTokenRequest(refreshToken)
-      )
-      check(response.isSuccessful) { "Supabase session refresh failed (${response.code()})" }
-      requireNotNull(response.body()) { "Supabase returned an empty refreshed session" }
-    }
+    return Result.failure(IllegalStateException("Laravel Sanctum ne prend pas encore en charge le refresh token"))
   }
 
   companion object {
     private fun createApi(): SupabaseAuthApi {
-      val configuredUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
+      val configuredUrl = BuildConfig.LYONTAXIS_API_URL.trimEnd('/')
       val baseUrl = (configuredUrl.ifBlank { "https://invalid.supabase.local" }) + "/"
       return Retrofit.Builder()
         .baseUrl(baseUrl)

@@ -71,9 +71,11 @@ android {
 
   val supabaseUrl = configuredValue("SUPABASE_URL")
   val supabaseAnonKey = configuredValue("SUPABASE_ANON_KEY")
+  val lyonTaxisApiUrl = configuredValue("LYONTAXIS_API_URL")
   defaultConfig {
     buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
     buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+    buildConfigField("String", "LYONTAXIS_API_URL", "\"$lyonTaxisApiUrl\"")
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {

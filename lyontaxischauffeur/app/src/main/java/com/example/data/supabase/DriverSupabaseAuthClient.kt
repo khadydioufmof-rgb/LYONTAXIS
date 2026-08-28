@@ -19,11 +19,14 @@ data class PasswordLoginRequest(
 
 @JsonClass(generateAdapter = true)
 data class PasswordLoginResponse(
-    val access_token: String,
-    val refresh_token: String,
-    val expires_in: Long,
+    val access_token: String = "",
+    val refresh_token: String = "",
+    val expires_in: Long = 2_592_000,
+    val token: String? = null,
     val user: SupabaseAuthUser?
-)
+) {
+    fun normalized() = copy(access_token = token ?: access_token)
+}
 
 @JsonClass(generateAdapter = true)
 data class SupabaseAuthUser(
@@ -32,49 +35,42 @@ data class SupabaseAuthUser(
 )
 
 private interface DriverSupabaseAuthApi {
-    @POST("auth/v1/token")
+    @POST("driver/auth/login")
     suspend fun signIn(
-        @Query("grant_type") grantType: String = "password",
-        @Header("apikey") apiKey: String,
-        @Header("Authorization") authorization: String,
         @Body request: PasswordLoginRequest
     ): Response<PasswordLoginResponse>
 }
 
 class DriverSupabaseAuthClient {
     private val api: DriverSupabaseAuthApi = Retrofit.Builder()
-        .baseUrl(BuildConfig.SUPABASE_URL.trimEnd('/') + "/")
+        .baseUrl(BuildConfig.LYONTAXIS_API_URL.trimEnd('/') + "/")
         .addConverterFactory(MoshiConverterFactory.create())
         .build()
         .create(DriverSupabaseAuthApi::class.java)
 
     val isConfigured: Boolean
-        get() = BuildConfig.SUPABASE_URL.isNotBlank() && BuildConfig.SUPABASE_ANON_KEY.isNotBlank()
+        get() = BuildConfig.LYONTAXIS_API_URL.isNotBlank()
 
     suspend fun signIn(email: String, password: String): Result<PasswordLoginResponse> {
-        if (!isConfigured) return Result.failure(IllegalStateException("Supabase n'est pas configure"))
+        if (!isConfigured) return Result.failure(IllegalStateException("L'API LyonTaxis n'est pas configuree"))
 
         return runCatching {
-            val response = api.signIn(
-                apiKey = BuildConfig.SUPABASE_ANON_KEY,
-                authorization = "Bearer ${BuildConfig.SUPABASE_ANON_KEY}",
-                request = PasswordLoginRequest(email.trim(), password)
-            )
-            check(response.isSuccessful) { "Connexion Supabase refusee (${response.code()})" }
-            requireNotNull(response.body()) { "Supabase a renvoye une session vide" }
+            val response = api.signIn(PasswordLoginRequest(email.trim(), password))
+            check(response.isSuccessful) { "Connexion LyonTaxis refusee (${response.code()})" }
+            requireNotNull(response.body()) { "LyonTaxis a renvoye une session vide" }.normalized()
         }
     }
 
     suspend fun getAssignedRides(accessToken: String): Result<String> = runCatching {
-        require(isConfigured) { "Supabase n'est pas configure" }
+        require(isConfigured) { "L'API LyonTaxis n'est pas configuree" }
         val request = okhttp3.Request.Builder()
-            .url(BuildConfig.SUPABASE_URL.trimEnd('/') + "/rest/v1/rides?select=*&status=in.(pending,confirmed,driver_arriving,in_progress)")
-            .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .url(BuildConfig.LYONTAXIS_API_URL.trimEnd('/') + "/trips")
             .header("Authorization", "Bearer $accessToken")
             .build()
         okhttp3.OkHttpClient().newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "Lecture des courses Supabase refusee (${response.code})" }
-            response.body?.string().orEmpty()
+            check(response.isSuccessful) { "Lecture des courses LyonTaxis refusee (${response.code})" }
+            val payload = response.body?.string().orEmpty()
+            org.json.JSONObject(payload).optJSONArray("trips")?.toString() ?: "[]"
         }
     }
 
@@ -100,7 +96,7 @@ class DriverSupabaseAuthClient {
                     id = ride.optString("id"),
                     pickupAddress = pickup.optString("address", "Point de prise en charge"),
                     dropoffAddress = ride.optJSONObject("dropoff_location")?.optString("address", "Destination") ?: "Destination",
-                    vehicle = ride.optString("vehicle", "Eco"),
+                    vehicle = ride.optString("vehicle_category", ride.optString("vehicle", "Eco")),
                     fare = ride.optDouble("fare", 0.0),
                     distanceKm = distance
                 )

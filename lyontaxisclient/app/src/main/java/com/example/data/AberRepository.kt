@@ -266,29 +266,21 @@ class AberRepository {
       supabaseDataClient.createRide(
         session.accessToken,
         SupabaseRideInsert(
-          user_id = session.userId,
-          pickup_location = booking.pickupLocation.toDto(),
-          dropoff_location = booking.dropoffLocation.toDto(),
-          vehicle = booking.vehicle.name.lowercase(),
-          status = booking.status.name.lowercase(),
-          fare = booking.fare,
-          base_fare = booking.baseFare,
-          distance_fare = booking.distanceFare,
-          time_fare = booking.timeFare,
-          stop_fee = booking.stopFee,
-          service_fee = booking.serviceFee,
-          discount = booking.discount,
-          tip = booking.tip,
-          distance_km = booking.distanceKm,
-          duration_min = booking.durationMin,
-          payment_method_title = booking.paymentMethodTitle,
-          preferences = mapOf(
-            "babySeat" to booking.preferences.babySeat,
-            "pmrAccess" to booking.preferences.pmrAccess,
-            "petFriendly" to booking.preferences.petFriendly,
-            "extraLuggage" to booking.preferences.extraLuggage,
-            "silentRide" to booking.preferences.silentRide
-          )
+          vehicle_category = booking.vehicle.toApiCategory(),
+          pickup_latitude = booking.pickupLocation.latitude,
+          pickup_longitude = booking.pickupLocation.longitude,
+          dropoff_latitude = booking.dropoffLocation.latitude,
+          dropoff_longitude = booking.dropoffLocation.longitude,
+          pickup_address = booking.pickupLocation.address,
+          dropoff_address = booking.dropoffLocation.address,
+          passenger_count = booking.vehicle.capacity.coerceAtLeast(1),
+          special_requests = listOfNotNull(
+            if (booking.preferences.babySeat) "Siège bébé" else null,
+            if (booking.preferences.pmrAccess) "Accès PMR" else null,
+            if (booking.preferences.petFriendly) "Animal accepté" else null,
+            if (booking.preferences.extraLuggage) "Bagages supplémentaires" else null,
+            if (booking.preferences.silentRide) "Course silencieuse" else null,
+          ).joinToString(", ").ifBlank { null }
         )
       )
     }
@@ -589,6 +581,13 @@ class AberRepository {
 
   private fun LocationPoint.toDto() = SupabaseLocationDto(id, title, address, distanceKm, latitude, longitude)
 
+  private fun VehicleCategory.toApiCategory() = when (this) {
+    VehicleCategory.JUST_GO, VehicleCategory.ELECTRIC_CAR, VehicleCategory.BIKE -> "Eco"
+    VehicleCategory.LIMOUSINE, VehicleCategory.LUXURY -> "Premium"
+    VehicleCategory.TAXI_4_SEAT -> "Sedan"
+    VehicleCategory.TAXI_7_SEAT -> "Van"
+  }
+
   private fun SupabaseProfileDto.toUserProfile() = UserProfile(
     name = name,
     email = email.orEmpty(),
@@ -623,9 +622,9 @@ class AberRepository {
   )
 
   private fun SupabaseRideDto.toTripHistoryItem() = TripHistoryItem(
-    id = id,
-    pickupTitle = pickup_location.title,
-    dropoffTitle = dropoff_location.title,
+    id = id.toString(),
+    pickupTitle = pickup_location.title.ifBlank { pickup_location.address },
+    dropoffTitle = dropoff_location.title.ifBlank { dropoff_location.address },
     fare = fare,
     date = created_at,
     status = status,
@@ -637,7 +636,7 @@ class AberRepository {
   )
 
   private fun SupabaseNotificationDto.toNotificationItem() = NotificationItem(
-    id = id,
+    id = id.toString(),
     type = NotificationType.SYSTEM_CONFIRM,
     title = title,
     description = description,
